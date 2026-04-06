@@ -14,7 +14,14 @@ import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import { AppError } from './utils/errors';
 
 const app = express();
-app.use(cors({ origin: 'http://localhost:5173' }));
+if (process.env.CORS_ORIGIN === '*') {
+  app.use(cors());
+} else {
+  const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+    : ['http://localhost:5173'];
+  app.use(cors({ origin: corsOrigins }));
+}
 app.use(express.json());
 
 const openApiPath = path.join(process.cwd(), 'docs', 'openapi.yaml');
