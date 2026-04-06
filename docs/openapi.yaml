@@ -1,0 +1,414 @@
+openapi: 3.0.3
+info:
+  title: Finlytics API
+  description: |
+    Finance records, role-based access control, and dashboard analytics.
+    Authenticate via `POST /api/auth/login`, then send `Authorization: Bearer <token>` on protected routes.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Records
+  - name: Dashboard
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        token:
+          type: string
+
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        role:
+          type: string
+          enum: [viewer, analyst, admin]
+          description: Optional; defaults to viewer
+
+    RegisterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            email: { type: string }
+            role: { type: string }
+
+    FinancialRecord:
+      type: object
+      properties:
+        id: { type: integer }
+        created_by: { type: integer }
+        amount: { type: number }
+        type: { type: string, enum: [income, expense] }
+        category: { type: string }
+        date: { type: string, format: date }
+        notes: { type: string, nullable: true }
+        deleted_at: { type: string, nullable: true }
+        created_at: { type: string }
+        updated_at: { type: string }
+
+    CreateRecordRequest:
+      type: object
+      required: [amount, type, category, date]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        type:
+          type: string
+          enum: [income, expense]
+        category:
+          type: string
+        date:
+          type: string
+          description: YYYY-MM-DD
+        notes:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [viewer, analyst, admin] }
+        status: { type: string, enum: [active, inactive] }
+        created_at: { type: string }
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: List all users
+      description: Admin only.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  /api/users/{id}/role:
+    patch:
+      tags: [Users]
+      summary: Update user role
+      description: Admin only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [viewer, analyst, admin]
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad request
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+
+  /api/users/{id}/status:
+    patch:
+      tags: [Users]
+      summary: Update user status (active / inactive)
+      description: Admin only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, inactive]
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+
+  /api/records:
+    get:
+      tags: [Records]
+      summary: List financial records
+      description: Authenticated users. Optional filters.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [income, expense]
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          description: Start date YYYY-MM-DD
+          schema:
+            type: string
+        - name: to
+          in: query
+          description: End date YYYY-MM-DD
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  records:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FinancialRecord'
+        '401':
+          description: Unauthorized
+
+    post:
+      tags: [Records]
+      summary: Create a record
+      description: Admin only.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecordRequest'
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Validation error
+        '403':
+          description: Forbidden
+
+  /api/records/{id}:
+    patch:
+      tags: [Records]
+      summary: Update a record
+      description: Admin only. Partial body allowed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecordRequest'
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+        '404':
+          description: Not found
+
+    delete:
+      tags: [Records]
+      summary: Soft-delete a record
+      description: Admin only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+        '404':
+          description: Not found
+
+  /api/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Totals — income, expenses, net balance, record count
+      description: Analyst or Admin.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+
+  /api/dashboard/by-category:
+    get:
+      tags: [Dashboard]
+      summary: Aggregates by category and type
+      description: Analyst or Admin.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+
+  /api/dashboard/trends:
+    get:
+      tags: [Dashboard]
+      summary: Monthly trends by type
+      description: Analyst or Admin.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+
+  /api/dashboard/recent:
+    get:
+      tags: [Dashboard]
+      summary: Recent activity (latest records)
+      description: Analyst or Admin.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK

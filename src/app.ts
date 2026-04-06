@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
+import YAML from 'yaml';
+import swaggerUi from 'swagger-ui-express';
 import './config/db';
 
 import authRoutes from './modules/auth/auth.routes';
@@ -12,6 +16,13 @@ import { AppError } from './utils/errors';
 const app = express();
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
+
+const openApiPath = path.join(process.cwd(), 'docs', 'openapi.yaml');
+const openApiDoc = YAML.parse(fs.readFileSync(openApiPath, 'utf8')) as Record<string, unknown>;
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiDoc, { customSiteTitle: 'Finlytics API' }));
+app.get('/openapi.yaml', (_req: Request, res: Response) => {
+  res.type('text/yaml; charset=utf-8').send(fs.readFileSync(openApiPath, 'utf8'));
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
